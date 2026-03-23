@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+
 interface TelegramWebApp {
   expand(): void;
   ready(): void;
