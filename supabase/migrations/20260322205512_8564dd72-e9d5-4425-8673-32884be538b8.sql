@@ -1,0 +1,1 @@
+UPDATE profiles SET token_balance = token_balance + 100 WHERE email = 'vsemil8881@gmail.com';
