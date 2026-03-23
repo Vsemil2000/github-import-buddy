@@ -1,0 +1,1 @@
+CREATE POLICY "Users can update own images" ON public.generated_images FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);

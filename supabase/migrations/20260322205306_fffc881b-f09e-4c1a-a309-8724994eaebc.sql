@@ -1,0 +1,2 @@
+ALTER TABLE public.generated_images DROP CONSTRAINT generated_images_image_type_check;
+ALTER TABLE public.generated_images ADD CONSTRAINT generated_images_image_type_check CHECK (image_type = ANY (ARRAY['fitting'::text, 'flatlay'::text, 'hairstyle'::text]));
