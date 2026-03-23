@@ -63,22 +63,25 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontSize: {
+        "display": ["2.75rem", { lineHeight: "1.08", letterSpacing: "-0.025em" }],
+        "display-sm": ["2rem", { lineHeight: "1.12", letterSpacing: "-0.015em" }],
+      },
+      boxShadow: {
+        "premium": "0 1px 3px hsl(25 15% 14% / 0.05), 0 4px 18px -2px hsl(25 15% 14% / 0.08)",
+        "premium-lg": "0 2px 8px hsl(25 15% 14% / 0.06), 0 12px 40px -4px hsl(25 15% 14% / 0.12)",
+        "premium-inner": "inset 0 1px 2px hsl(25 15% 14% / 0.04)",
+        "luxury": "0 4px 20px -2px hsl(345 32% 26% / 0.12), 0 1px 4px hsl(25 15% 14% / 0.06)",
+        "luxury-lg": "0 8px 40px -4px hsl(345 32% 26% / 0.15), 0 2px 8px hsl(25 15% 14% / 0.08)",
+      },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
         },
       },
       animation: {
