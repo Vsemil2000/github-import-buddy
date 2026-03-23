@@ -5,6 +5,37 @@
  * outside the Telegram in-app browser.
  */
 
+declare global {
+  interface Window {
+    Telegram?: { WebApp: TelegramWebApp };
+  }
+}
+
+interface TelegramWebApp {
+  expand(): void;
+  ready(): void;
+  close(): void;
+  setHeaderColor(color: string): void;
+  setBackgroundColor(color: string): void;
+  disableVerticalSwipes(): void;
+  enableClosingConfirmation(): void;
+  initData: string;
+  initDataUnsafe: {
+    user?: {
+      id: number;
+      first_name: string;
+      last_name?: string;
+      username?: string;
+      language_code?: string;
+    };
+    start_param?: string;
+  };
+  colorScheme: "light" | "dark";
+  themeParams: Record<string, string>;
+  platform: string;
+  version: string;
+}
+
 export interface TelegramDiagnostics {
   hasTelegramObject: boolean;
   hasWebAppObject: boolean;
