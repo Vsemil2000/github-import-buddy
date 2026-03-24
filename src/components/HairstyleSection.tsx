@@ -170,7 +170,8 @@ const HairstyleSection = ({
         )}
 
         <div
-          className="premium-card-featured p-8 text-center cursor-pointer hover:shadow-premium-lg transition-shadow duration-300 active:scale-[0.99] block relative overflow-hidden"
+          className="premium-card-featured p-8 text-center cursor-pointer hover:shadow-premium-lg transition-shadow duration-300 active:scale-[0.99] block"
+          onClick={triggerFileInput}
         >
           {uploading ? (
             <div className="space-y-3 py-8">
@@ -191,16 +192,17 @@ const HairstyleSection = ({
               <p className="text-sm text-muted-foreground">Натиснете, за да качите портретна снимка</p>
             </div>
           )}
-          <input
-            ref={fileInputRef}
-            id="hairstyle-photo-upload"
-            type="file"
-            accept="image/*"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-            onChange={handleFileChange}
-            disabled={uploading}
-          />
         </div>
+        <input
+          ref={fileInputRef}
+          id="hairstyle-photo-upload"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={handleFileChange as any}
+          disabled={uploading}
+        />
 
         {uploadError && (
           <p className="text-xs text-destructive text-center">{uploadError}</p>
