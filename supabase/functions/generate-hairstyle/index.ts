@@ -35,8 +35,11 @@ serve(async (req) => {
     const genderText = gender === "male" ? "мъж" : "жена";
     const { mimeType, base64 } = parseDataUrl(imageBase64);
 
+    console.log("[generate-hairstyle] Request received, user:", user.id, "hairstyle:", hairstyleName);
+    console.log("[generate-hairstyle] Image base64 length:", base64.length, "mimeType:", mimeType);
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
