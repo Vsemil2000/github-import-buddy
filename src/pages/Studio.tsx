@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Upload, Loader2, Download, LayoutGrid, Coins, ShoppingCart, Star, Shirt, Scissors } from "lucide-react";
+import { useImageUpload } from "@/hooks/use-image-upload";
 import {
   Dialog,
   DialogContent,
