@@ -18,13 +18,11 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
       console.error("check-tokens: missing env vars", {
         hasSupabaseUrl: Boolean(supabaseUrl),
-        hasAnonKey: Boolean(anonKey),
         hasServiceRoleKey: Boolean(serviceRoleKey),
       });
 
@@ -34,14 +32,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const accessToken = authHeader.slice("Bearer ".length);
+    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await serviceClient.auth.getUser(accessToken);
 
     if (authError || !user) {
       console.error("check-tokens: auth error", authError?.message ?? "no user");
@@ -51,7 +48,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: wallet, error: walletError } = await serviceClient
       .from("token_wallets")
       .select("balance")

@@ -21,14 +21,24 @@ Deno.serve(async (req) => {
 
     console.log("initialize-user: request received");
 
-    // Authenticate user via official Supabase auth (same pattern as check-tokens)
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error("initialize-user: missing env vars", {
+        hasSupabaseUrl: Boolean(supabaseUrl),
+        hasServiceRoleKey: Boolean(serviceRoleKey),
+      });
+
+      return new Response(JSON.stringify({ error: "Server configuration error" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const accessToken = authHeader.slice("Bearer ".length);
+    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data: { user }, error: authError } = await serviceClient.auth.getUser(accessToken);
 
     if (authError || !user) {
       console.error("initialize-user: auth failed:", authError?.message ?? "no user");
@@ -39,12 +49,6 @@ Deno.serve(async (req) => {
 
     const userId = user.id;
     console.log("initialize-user: userId resolved:", userId);
-
-    // Service client to bypass RLS
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Check existing wallet
     console.log("initialize-user: checking wallet for", userId);
@@ -59,23 +63,27 @@ Deno.serve(async (req) => {
       throw walletCheckErr;
     }
 
-    console.log("initialize-user: existing wallet:", JSON.stringify(existingWallet));
+    console.log("initialize-user: wallet existed:", Boolean(existingWallet));
+    console.log("initialize-user: lifetime_credited before:", existingWallet?.lifetime_credited ?? 0);
 
     if (!existingWallet) {
-      // Create wallet with welcome bonus
-      console.log("initialize-user: creating new wallet with bonus", WELCOME_BONUS);
-      const { error: walletError } = await serviceClient.from("token_wallets").insert({
+      console.log("initialize-user: bonus applied: create wallet with", WELCOME_BONUS);
+      const { data: createdWallet, error: walletError } = await serviceClient
+        .from("token_wallets")
+        .insert({
         user_id: userId,
         balance: WELCOME_BONUS,
         lifetime_credited: WELCOME_BONUS,
         lifetime_spent: 0,
-      });
+        })
+        .select("balance")
+        .maybeSingle();
+
       if (walletError) {
         console.error("initialize-user: wallet insert error:", JSON.stringify(walletError));
-        if (!walletError.message?.includes("duplicate")) throw walletError;
+        throw walletError;
       }
 
-      // Record transaction
       const { error: txError } = await serviceClient.from("token_transactions").insert({
         user_id: userId,
         amount: WELCOME_BONUS,
@@ -86,22 +94,29 @@ Deno.serve(async (req) => {
         console.error("initialize-user: tx insert error:", JSON.stringify(txError));
       }
 
-      console.log("initialize-user: bonus granted, final balance:", WELCOME_BONUS);
+      const finalBalance = createdWallet?.balance ?? WELCOME_BONUS;
+      console.log("initialize-user: final balance:", finalBalance);
       return new Response(JSON.stringify({
         initialized: true,
-        tokenBalance: WELCOME_BONUS,
+        tokenBalance: finalBalance,
         grantedBonus: true,
+        finalBalance,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
     } else if (!existingWallet.lifetime_credited || existingWallet.lifetime_credited === 0) {
-      // Fix missing bonus — lifetime_credited is null or 0
-      console.log("initialize-user: wallet exists, lifetime_credited:", existingWallet.lifetime_credited, "balance:", existingWallet.balance, "— granting missing bonus");
+      const finalBalance = (existingWallet.balance ?? 0) + WELCOME_BONUS;
+      console.log("initialize-user: bonus applied: existing wallet updated", {
+        previousBalance: existingWallet.balance ?? 0,
+        finalBalance,
+      });
+
       const { error: updateError } = await serviceClient
         .from("token_wallets")
-        .update({ balance: WELCOME_BONUS, lifetime_credited: WELCOME_BONUS })
+        .update({ balance: finalBalance, lifetime_credited: WELCOME_BONUS })
         .eq("user_id", userId);
+
       if (updateError) {
         console.error("initialize-user: wallet update error:", JSON.stringify(updateError));
         throw updateError;
@@ -117,21 +132,25 @@ Deno.serve(async (req) => {
         console.error("initialize-user: tx insert error:", JSON.stringify(txError));
       }
 
-      console.log("initialize-user: missing bonus granted, final balance:", WELCOME_BONUS);
+      console.log("initialize-user: final balance:", finalBalance);
       return new Response(JSON.stringify({
         initialized: true,
-        tokenBalance: WELCOME_BONUS,
+        tokenBalance: finalBalance,
         grantedBonus: true,
+        finalBalance,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
     } else {
-      console.log("initialize-user: already initialized, balance:", existingWallet.balance, "lifetime_credited:", existingWallet.lifetime_credited);
+      const finalBalance = existingWallet.balance ?? 0;
+      console.log("initialize-user: bonus skipped: already initialized");
+      console.log("initialize-user: final balance:", finalBalance);
       return new Response(JSON.stringify({
         initialized: false,
         reason: "already_initialized",
-        tokenBalance: existingWallet.balance,
+        tokenBalance: finalBalance,
+        finalBalance,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
