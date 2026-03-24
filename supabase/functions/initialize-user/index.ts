@@ -96,9 +96,9 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
-    } else if (existingWallet.lifetime_credited === 0 && existingWallet.balance === 0) {
-      // Fix missing bonus for existing wallet with 0/0
-      console.log("initialize-user: wallet exists with 0 balance, 0 lifetime_credited — granting missing bonus");
+    } else if (!existingWallet.lifetime_credited || existingWallet.lifetime_credited === 0) {
+      // Fix missing bonus — lifetime_credited is null or 0
+      console.log("initialize-user: wallet exists, lifetime_credited:", existingWallet.lifetime_credited, "balance:", existingWallet.balance, "— granting missing bonus");
       const { error: updateError } = await serviceClient
         .from("token_wallets")
         .update({ balance: WELCOME_BONUS, lifetime_credited: WELCOME_BONUS })
