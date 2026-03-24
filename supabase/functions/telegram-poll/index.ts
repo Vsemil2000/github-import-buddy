@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/telegram";
 const MAX_RUNTIME_MS = 55_000;
@@ -35,7 +35,6 @@ Deno.serve(async () => {
   while (true) {
     const elapsed = Date.now() - startTime;
     const remainingMs = MAX_RUNTIME_MS - elapsed;
-
     if (remainingMs < MIN_REMAINING_MS) break;
 
     const timeout = Math.min(50, Math.floor(remainingMs / 1000) - 5);
@@ -64,11 +63,9 @@ Deno.serve(async () => {
     if (updates.length === 0) continue;
 
     for (const update of updates) {
-      // Handle pre_checkout_query - must answer quickly
       if (update.pre_checkout_query) {
         const query = update.pre_checkout_query;
         console.log("Pre-checkout query:", JSON.stringify(query));
-
         await fetch(`${GATEWAY_URL}/answerPreCheckoutQuery`, {
           method: "POST",
           headers: {
@@ -76,14 +73,10 @@ Deno.serve(async () => {
             "X-Connection-Api-Key": TELEGRAM_API_KEY,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            pre_checkout_query_id: query.id,
-            ok: true,
-          }),
+          body: JSON.stringify({ pre_checkout_query_id: query.id, ok: true }),
         });
       }
 
-      // Handle successful_payment
       if (update.message?.successful_payment) {
         const payment = update.message.successful_payment;
         console.log("Successful payment:", JSON.stringify(payment));
@@ -94,26 +87,36 @@ Deno.serve(async () => {
           const tokens = payload.tokens;
 
           if (userId && tokens) {
-            // Get current balance
-            const { data: profile, error: profileError } = await supabase
-              .from("profiles")
-              .select("token_balance")
+            // Use token_wallets instead of profiles
+            const { data: wallet, error: walletErr } = await supabase
+              .from("token_wallets")
+              .select("balance")
               .eq("user_id", userId)
-              .single();
+              .maybeSingle();
 
-            if (profileError) {
-              console.error("Profile fetch error:", profileError);
-            } else {
-              const newBalance = (profile.token_balance || 0) + tokens;
-              const { error: updateError } = await supabase
-                .from("profiles")
-                .update({ token_balance: newBalance })
-                .eq("user_id", userId);
-
-              if (updateError) {
-                console.error("Balance update error:", updateError);
+            if (walletErr) {
+              console.error("Wallet fetch error:", walletErr);
+            } else if (!wallet) {
+              // Create wallet with purchased tokens
+              const { error: insertErr } = await supabase
+                .from("token_wallets")
+                .insert({ user_id: userId, balance: tokens, lifetime_credited: tokens, lifetime_spent: 0 });
+              if (insertErr) {
+                console.error("Wallet insert error:", insertErr);
               } else {
-                console.log(`Added ${tokens} tokens to user ${userId}. New balance: ${newBalance}`);
+                console.log(`Created wallet for ${userId} with ${tokens} tokens`);
+                totalProcessed++;
+              }
+            } else {
+              const newBalance = (wallet.balance ?? 0) + tokens;
+              const { error: updateErr } = await supabase
+                .from("token_wallets")
+                .update({ balance: newBalance })
+                .eq("user_id", userId);
+              if (updateErr) {
+                console.error("Balance update error:", updateErr);
+              } else {
+                console.log(`Added ${tokens} tokens to ${userId}. New balance: ${newBalance}`);
                 totalProcessed++;
               }
             }
@@ -124,9 +127,7 @@ Deno.serve(async () => {
       }
     }
 
-    // Advance offset
     const newOffset = Math.max(...updates.map((u: any) => u.update_id)) + 1;
-
     const { error: offsetErr } = await supabase
       .from("telegram_bot_state")
       .update({ update_offset: newOffset, updated_at: new Date().toISOString() })
@@ -135,7 +136,6 @@ Deno.serve(async () => {
     if (offsetErr) {
       return new Response(JSON.stringify({ error: offsetErr.message }), { status: 500 });
     }
-
     currentOffset = newOffset;
   }
 

@@ -12,39 +12,26 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "No auth header" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
     if (!supabaseUrl || !serviceRoleKey) {
-      console.error("check-tokens: missing env vars", {
-        hasSupabaseUrl: Boolean(supabaseUrl),
-        hasServiceRoleKey: Boolean(serviceRoleKey),
-      });
-
+      console.error("check-tokens: missing env vars");
       return new Response(JSON.stringify({ error: "Server configuration error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const accessToken = authHeader.slice("Bearer ".length);
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
-    const {
-      data: { user },
-      error: authError,
-    } = await serviceClient.auth.getUser(accessToken);
-
+    const { data: { user }, error: authError } = await serviceClient.auth.getUser(accessToken);
     if (authError || !user) {
-      console.error("check-tokens: auth error", authError?.message ?? "no user");
-      return new Response(JSON.stringify({ error: authError?.message ?? "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -55,35 +42,22 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (walletError) {
-      console.error("check-tokens: wallet query error", walletError);
+      console.error("check-tokens: wallet error", walletError);
       return new Response(JSON.stringify({ error: walletError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const balance = wallet?.balance ?? 0;
-    console.log("check-tokens: success", { userId: user.id, balance, walletFound: Boolean(wallet) });
+    console.log("check-tokens: userId", user.id, "balance", balance);
 
-    return new Response(JSON.stringify({
-      success: true,
-      balance,
-      tokenBalance: balance,
-      canGenerate: balance > 0,
-    }), {
+    return new Response(JSON.stringify({ success: true, balance, canGenerate: balance > 0 }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error) {
-    console.error("check-tokens: unexpected runtime error", error);
-    const message = error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : JSON.stringify(error ?? { error: "Unknown runtime error" });
-
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+  } catch (e) {
+    console.error("check-tokens error:", e);
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

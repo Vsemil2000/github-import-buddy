@@ -13,23 +13,15 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      console.log("initialize-user: no auth header");
       return new Response(JSON.stringify({ error: "No auth header" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log("initialize-user: request received");
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
     if (!supabaseUrl || !serviceRoleKey) {
-      console.error("initialize-user: missing env vars", {
-        hasSupabaseUrl: Boolean(supabaseUrl),
-        hasServiceRoleKey: Boolean(serviceRoleKey),
-      });
-
+      console.error("initialize-user: missing env vars");
       return new Response(JSON.stringify({ error: "Server configuration error" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -39,128 +31,80 @@ Deno.serve(async (req) => {
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: { user }, error: authError } = await serviceClient.auth.getUser(accessToken);
-
     if (authError || !user) {
-      console.error("initialize-user: auth failed:", authError?.message ?? "no user");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const userId = user.id;
-    console.log("initialize-user: userId resolved:", userId);
+    console.log("initialize-user: userId", userId);
 
-    // Check existing wallet
-    console.log("initialize-user: checking wallet for", userId);
-    const { data: existingWallet, error: walletCheckErr } = await serviceClient
+    // Check token_wallets only
+    const { data: wallet, error: walletErr } = await serviceClient
       .from("token_wallets")
-      .select("id, balance, lifetime_credited")
+      .select("balance, lifetime_credited")
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (walletCheckErr) {
-      console.error("initialize-user: wallet check error:", JSON.stringify(walletCheckErr));
-      throw walletCheckErr;
+    if (walletErr) {
+      console.error("initialize-user: wallet query error", walletErr);
+      throw walletErr;
     }
 
-    console.log("initialize-user: wallet existed:", Boolean(existingWallet));
-    console.log("initialize-user: lifetime_credited before:", existingWallet?.lifetime_credited ?? 0);
-
-    if (!existingWallet) {
-      console.log("initialize-user: bonus applied: create wallet with", WELCOME_BONUS);
-      const { data: createdWallet, error: walletError } = await serviceClient
+    if (!wallet) {
+      // No wallet — create with welcome bonus
+      const { error: insertErr } = await serviceClient
         .from("token_wallets")
-        .insert({
-        user_id: userId,
-        balance: WELCOME_BONUS,
-        lifetime_credited: WELCOME_BONUS,
-        lifetime_spent: 0,
-        })
-        .select("balance")
-        .maybeSingle();
+        .insert({ user_id: userId, balance: WELCOME_BONUS, lifetime_credited: WELCOME_BONUS, lifetime_spent: 0 });
 
-      if (walletError) {
-        console.error("initialize-user: wallet insert error:", JSON.stringify(walletError));
-        throw walletError;
+      if (insertErr) {
+        console.error("initialize-user: wallet insert error", insertErr);
+        throw insertErr;
       }
 
-      const { error: txError } = await serviceClient.from("token_transactions").insert({
-        user_id: userId,
-        amount: WELCOME_BONUS,
-        type: "welcome_bonus",
+      await serviceClient.from("token_transactions").insert({
+        user_id: userId, amount: WELCOME_BONUS, type: "welcome_bonus",
         description: "Welcome bonus — 5 free tokens",
       });
-      if (txError) {
-        console.error("initialize-user: tx insert error:", JSON.stringify(txError));
-      }
 
-      const finalBalance = createdWallet?.balance ?? WELCOME_BONUS;
-      console.log("initialize-user: final balance:", finalBalance);
-      return new Response(JSON.stringify({
-        initialized: true,
-        tokenBalance: finalBalance,
-        grantedBonus: true,
-        finalBalance,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-
-    } else if (!existingWallet.lifetime_credited || existingWallet.lifetime_credited === 0) {
-      const finalBalance = (existingWallet.balance ?? 0) + WELCOME_BONUS;
-      console.log("initialize-user: bonus applied: existing wallet updated", {
-        previousBalance: existingWallet.balance ?? 0,
-        finalBalance,
-      });
-
-      const { error: updateError } = await serviceClient
-        .from("token_wallets")
-        .update({ balance: finalBalance, lifetime_credited: WELCOME_BONUS })
-        .eq("user_id", userId);
-
-      if (updateError) {
-        console.error("initialize-user: wallet update error:", JSON.stringify(updateError));
-        throw updateError;
-      }
-
-      const { error: txError } = await serviceClient.from("token_transactions").insert({
-        user_id: userId,
-        amount: WELCOME_BONUS,
-        type: "welcome_bonus",
-        description: "Welcome bonus — 5 free tokens (retroactive)",
-      });
-      if (txError) {
-        console.error("initialize-user: tx insert error:", JSON.stringify(txError));
-      }
-
-      console.log("initialize-user: final balance:", finalBalance);
-      return new Response(JSON.stringify({
-        initialized: true,
-        tokenBalance: finalBalance,
-        grantedBonus: true,
-        finalBalance,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-
-    } else {
-      const finalBalance = existingWallet.balance ?? 0;
-      console.log("initialize-user: bonus skipped: already initialized");
-      console.log("initialize-user: final balance:", finalBalance);
-      return new Response(JSON.stringify({
-        initialized: false,
-        reason: "already_initialized",
-        tokenBalance: finalBalance,
-        finalBalance,
-      }), {
+      console.log("initialize-user: wallet created, balance:", WELCOME_BONUS);
+      return new Response(JSON.stringify({ initialized: true, balance: WELCOME_BONUS, grantedBonus: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-  } catch (e) {
-    console.error("initialize-user error:", e instanceof Error ? e.message : e);
-    const msg = e instanceof Error ? e.message : JSON.stringify(e);
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500,
+
+    if (!wallet.lifetime_credited || wallet.lifetime_credited === 0) {
+      // Wallet exists but no bonus yet — grant retroactively
+      const newBalance = (wallet.balance ?? 0) + WELCOME_BONUS;
+      const { error: updateErr } = await serviceClient
+        .from("token_wallets")
+        .update({ balance: newBalance, lifetime_credited: WELCOME_BONUS })
+        .eq("user_id", userId);
+
+      if (updateErr) throw updateErr;
+
+      await serviceClient.from("token_transactions").insert({
+        user_id: userId, amount: WELCOME_BONUS, type: "welcome_bonus",
+        description: "Welcome bonus — 5 free tokens (retroactive)",
+      });
+
+      console.log("initialize-user: retroactive bonus, balance:", newBalance);
+      return new Response(JSON.stringify({ initialized: true, balance: newBalance, grantedBonus: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Already initialized
+    console.log("initialize-user: already initialized, balance:", wallet.balance);
+    return new Response(JSON.stringify({ initialized: false, balance: wallet.balance }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
+  } catch (e) {
+    console.error("initialize-user error:", e);
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
