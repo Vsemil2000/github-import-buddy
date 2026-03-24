@@ -1,1 +1,40 @@
 project_id = "bfifatgybzxkczwerkio"
+
+[functions.initialize-user]
+verify_jwt = false
+
+[functions.check-tokens]
+verify_jwt = false
+
+[functions.ai-stylist]
+verify_jwt = false
+
+[functions.analyze-hairstyle]
+verify_jwt = false
+
+[functions.analyze-style]
+verify_jwt = false
+
+[functions.create-stars-payment]
+verify_jwt = false
+
+[functions.generate-fitting]
+verify_jwt = false
+
+[functions.generate-flatlay]
+verify_jwt = false
+
+[functions.generate-hairstyle]
+verify_jwt = false
+
+[functions.recover-legacy-login]
+verify_jwt = false
+
+[functions.spend-token]
+verify_jwt = false
+
+[functions.telegram-auth]
+verify_jwt = false
+
+[functions.telegram-poll]
+verify_jwt = false

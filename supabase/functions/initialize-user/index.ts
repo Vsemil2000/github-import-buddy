@@ -18,11 +18,7 @@ serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      console.error("initialize-user: missing env vars", {
-        hasSupabaseUrl: Boolean(supabaseUrl),
-        hasAnonKey: Boolean(anonKey),
-        hasServiceRoleKey: Boolean(serviceRoleKey),
-      });
+      console.error("initialize-user: missing env vars");
       throw new Error("Server configuration error");
     }
 
@@ -30,11 +26,10 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } }
     });
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) throw new Error("Not authenticated");
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw new Error("Not authenticated");
 
-    const userId = claimsData.claims.sub;
+    const userId = user.id;
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
