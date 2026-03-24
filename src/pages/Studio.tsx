@@ -43,7 +43,7 @@ const Studio = () => {
   const [activeTab, setActiveTab] = useState<"clothing" | "hairstyle">("clothing");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
-  const { uploading, uploadError, handleFileUpload, debugLog } = useImageUpload();
+  const { uploading, uploadError, handleFileUpload, debugLog, uploadStatus, statusMessage, registerFileSelection } = useImageUpload();
   const [analyzing, setAnalyzing] = useState(false);
   const [styles, setStyles] = useState<Style[] | null>(null);
   const [cardStates, setCardStates] = useState<StyleCardState[]>([]);
@@ -152,6 +152,7 @@ const Studio = () => {
     const input = (e.target as HTMLInputElement);
     const file = input?.files?.[0];
     if (!file) return;
+    registerFileSelection(file, e.type);
     // Reset input so same file can be re-selected (critical for mobile Telegram)
     if (fileInputRef.current) fileInputRef.current.value = "";
     const result = await handleFileUpload(file);
@@ -174,8 +175,12 @@ const Studio = () => {
     const input = fileInputRef.current;
     if (!input) return;
     const handler = (e: Event) => handleFileChange(e);
+    input.addEventListener("change", handler);
     input.addEventListener("input", handler);
-    return () => input.removeEventListener("input", handler);
+    return () => {
+      input.removeEventListener("change", handler);
+      input.removeEventListener("input", handler);
+    };
   }, []);
 
   const analyzeStyle = async () => {
@@ -366,6 +371,12 @@ const Studio = () => {
 
           {uploadError && (
             <p className="text-xs text-destructive text-center">{uploadError}</p>
+          )}
+
+          {statusMessage && (
+            <p className={`text-xs text-center ${uploadStatus === "error" ? "text-destructive" : uploadStatus === "success" ? "text-primary" : "text-muted-foreground"}`}>
+              {statusMessage}
+            </p>
           )}
 
           {debugLog.length > 0 && (

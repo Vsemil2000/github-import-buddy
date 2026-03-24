@@ -42,7 +42,7 @@ const HairstyleSection = ({
   const [hairstyles, setHairstyles] = useState<Hairstyle[] | null>(null);
   const [cardStates, setCardStates] = useState<HairstyleCardState[]>([]);
   const [useSharedPhoto, setUseSharedPhoto] = useState(false);
-  const { uploading, uploadError, handleFileUpload, debugLog } = useImageUpload();
+  const { uploading, uploadError, handleFileUpload, debugLog, uploadStatus, statusMessage, registerFileSelection } = useImageUpload();
 
   const activePreview = useSharedPhoto ? sharedPhotoPreview : photoPreview;
   const activeBase64 = useSharedPhoto ? sharedPhotoBase64 : photoBase64;
@@ -51,6 +51,7 @@ const HairstyleSection = ({
     const input = (e.target as HTMLInputElement);
     const file = input?.files?.[0];
     if (!file) return;
+    registerFileSelection(file, e.type);
     if (fileInputRef.current) fileInputRef.current.value = "";
     const result = await handleFileUpload(file);
     if (result) {
@@ -71,8 +72,12 @@ const HairstyleSection = ({
     const input = fileInputRef.current;
     if (!input) return;
     const handler = (e: Event) => handleFileChange(e);
+    input.addEventListener("change", handler);
     input.addEventListener("input", handler);
-    return () => input.removeEventListener("input", handler);
+    return () => {
+      input.removeEventListener("change", handler);
+      input.removeEventListener("input", handler);
+    };
   }, []);
 
   const handleUseSharedPhoto = () => {
@@ -206,6 +211,12 @@ const HairstyleSection = ({
 
         {uploadError && (
           <p className="text-xs text-destructive text-center">{uploadError}</p>
+        )}
+
+        {statusMessage && (
+          <p className={`text-xs text-center ${uploadStatus === "error" ? "text-destructive" : uploadStatus === "success" ? "text-primary" : "text-muted-foreground"}`}>
+            {statusMessage}
+          </p>
         )}
 
         {debugLog.length > 0 && (
