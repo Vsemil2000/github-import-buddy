@@ -42,6 +42,8 @@ const HairstyleSection = ({
   const [hairstyles, setHairstyles] = useState<Hairstyle[] | null>(null);
   const [cardStates, setCardStates] = useState<HairstyleCardState[]>([]);
   const [useSharedPhoto, setUseSharedPhoto] = useState(false);
+  const { uploading, uploadError, handleFileUpload, debugLog } = useImageUpload();
+  const [useSharedPhoto, setUseSharedPhoto] = useState(false);
 
   const activePreview = useSharedPhoto ? sharedPhotoPreview : photoPreview;
   const activeBase64 = useSharedPhoto ? sharedPhotoBase64 : photoBase64;
