@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -47,10 +47,10 @@ const HairstyleSection = ({
   const activePreview = useSharedPhoto ? sharedPhotoPreview : photoPreview;
   const activeBase64 = useSharedPhoto ? sharedPhotoBase64 : photoBase64;
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement> | Event) => {
+    const input = (e.target as HTMLInputElement);
+    const file = input?.files?.[0];
     if (!file) return;
-    // Reset input so same file can be re-selected (critical for mobile Telegram)
     if (fileInputRef.current) fileInputRef.current.value = "";
     const result = await handleFileUpload(file);
     if (result) {
@@ -61,6 +61,19 @@ const HairstyleSection = ({
       setCardStates([]);
     }
   };
+
+  const triggerFileInput = () => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  };
+
+  useEffect(() => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    const handler = (e: Event) => handleFileChange(e);
+    input.addEventListener("input", handler);
+    return () => input.removeEventListener("input", handler);
+  }, []);
 
   const handleUseSharedPhoto = () => {
     setUseSharedPhoto(true);
@@ -157,7 +170,8 @@ const HairstyleSection = ({
         )}
 
         <div
-          className="premium-card-featured p-8 text-center cursor-pointer hover:shadow-premium-lg transition-shadow duration-300 active:scale-[0.99] block relative overflow-hidden"
+          className="premium-card-featured p-8 text-center cursor-pointer hover:shadow-premium-lg transition-shadow duration-300 active:scale-[0.99] block"
+          onClick={triggerFileInput}
         >
           {uploading ? (
             <div className="space-y-3 py-8">
@@ -178,16 +192,17 @@ const HairstyleSection = ({
               <p className="text-sm text-muted-foreground">Натиснете, за да качите портретна снимка</p>
             </div>
           )}
-          <input
-            ref={fileInputRef}
-            id="hairstyle-photo-upload"
-            type="file"
-            accept="image/*"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-            onChange={handleFileChange}
-            disabled={uploading}
-          />
         </div>
+        <input
+          ref={fileInputRef}
+          id="hairstyle-photo-upload"
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={handleFileChange as any}
+          disabled={uploading}
+        />
 
         {uploadError && (
           <p className="text-xs text-destructive text-center">{uploadError}</p>

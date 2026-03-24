@@ -148,8 +148,9 @@ const Studio = () => {
   };
 
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement> | Event) => {
+    const input = (e.target as HTMLInputElement);
+    const file = input?.files?.[0];
     if (!file) return;
     // Reset input so same file can be re-selected (critical for mobile Telegram)
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -161,6 +162,21 @@ const Studio = () => {
       setCardStates([]);
     }
   };
+
+  // Programmatic click for mobile Telegram — overlay inputs often miss touch events
+  const triggerFileInput = () => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  };
+
+  // Attach native onInput as fallback (some mobile browsers fire input but not change)
+  useEffect(() => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    const handler = (e: Event) => handleFileChange(e);
+    input.addEventListener("input", handler);
+    return () => input.removeEventListener("input", handler);
+  }, []);
 
   const analyzeStyle = async () => {
     if (!photoBase64) return;
@@ -314,7 +330,8 @@ const Studio = () => {
           </div>
 
           <div
-            className="hero-luxury rounded-2xl p-8 text-center cursor-pointer hover:shadow-luxury-lg transition-shadow duration-300 active:scale-[0.99] block relative overflow-hidden"
+            className="hero-luxury rounded-2xl p-8 text-center cursor-pointer hover:shadow-luxury-lg transition-shadow duration-300 active:scale-[0.99] block"
+            onClick={triggerFileInput}
           >
             {uploading ? (
               <div className="space-y-3 py-8">
@@ -335,16 +352,17 @@ const Studio = () => {
                 <p className="text-sm text-muted-foreground">Натиснете, за да качите снимка в цял ръст</p>
               </div>
             )}
-            <input
-              ref={fileInputRef}
-              id="studio-photo-upload"
-              type="file"
-              accept="image/*"
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              onChange={handleFileChange}
-              disabled={uploading}
-            />
           </div>
+          <input
+            ref={fileInputRef}
+            id="studio-photo-upload"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={handleFileChange as any}
+            disabled={uploading}
+          />
 
           {uploadError && (
             <p className="text-xs text-destructive text-center">{uploadError}</p>
