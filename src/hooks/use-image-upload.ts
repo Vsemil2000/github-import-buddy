@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import imageCompression from "browser-image-compression";
 
 const BUCKET = "user-uploads";
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+const COMPRESS_ABOVE = 4 * 1024 * 1024; // compress if > 4 MB
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const HEIC_TYPES = ["image/heic", "image/heif"];
 
 interface UploadResult {
   base64: string;
@@ -44,7 +47,6 @@ export function useImageUpload(): UseImageUploadReturn {
     setUploadError(null);
     setDebugLog([]);
 
-    // Validate file
     if (!file) {
       const err = "Няма избран файл";
       log(`❌ ${err}`);
@@ -53,18 +55,21 @@ export function useImageUpload(): UseImageUploadReturn {
       return null;
     }
 
-    log(`📄 Файл избран: ${file.name} (${(file.size / 1024).toFixed(0)} KB, ${file.type})`);
+    const mimeType = file.type || "";
+    log(`📄 Файл: ${file.name} | ${(file.size / 1024).toFixed(0)} KB | type="${mimeType}"`);
 
-    if (file.size > MAX_SIZE) {
-      const err = "Файлът е твърде голям (макс. 10 МБ)";
+    // Reject HEIC/HEIF explicitly
+    if (HEIC_TYPES.includes(mimeType) || /\.heic$/i.test(file.name) || /\.heif$/i.test(file.name)) {
+      const err = "Моля, изберете JPG или PNG снимка. HEIC форматът не се поддържа.";
       log(`❌ ${err}`);
       setUploadError(err);
       toast.error(err);
       return null;
     }
 
-    if (!ALLOWED_TYPES.includes(file.type) && file.type !== "") {
-      const err = `Неподдържан формат: ${file.type}. Моля, качете JPEG, PNG или WebP.`;
+    // Allow empty type (common on mobile Telegram) or known types
+    if (mimeType && !ALLOWED_TYPES.includes(mimeType)) {
+      const err = `Неподдържан формат: ${mimeType}. Моля, изберете JPG или PNG снимка.`;
       log(`❌ ${err}`);
       setUploadError(err);
       toast.error(err);
@@ -72,47 +77,69 @@ export function useImageUpload(): UseImageUploadReturn {
     }
 
     setUploading(true);
-    log("⏳ Четене на файла като base64...");
 
     try {
-      // Step 1: Read as base64 for preview and Edge Functions
-      const base64 = await readAsBase64(file);
-      log("✅ Base64 готов");
+      // Step 0: Compress if needed
+      let processedFile = file;
+      if (file.size > COMPRESS_ABOVE) {
+        log(`⏳ Компресиране (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
+        try {
+          processedFile = await imageCompression(file, {
+            maxSizeMB: 3,
+            maxWidthOrHeight: 2048,
+            useWebWorker: false, // more reliable in Telegram WebApp
+            fileType: "image/jpeg",
+          });
+          log(`✅ Компресирано: ${(processedFile.size / 1024).toFixed(0)} KB`);
+        } catch (compErr: any) {
+          log(`⚠️ Компресирането неуспешно, използваме оригинала: ${compErr.message}`);
+          processedFile = file;
+        }
+      }
+
+      if (processedFile.size > MAX_SIZE) {
+        const err = "Файлът е твърде голям (макс. 10 МБ). Моля, изберете по-малка снимка.";
+        log(`❌ ${err}`);
+        setUploadError(err);
+        setUploading(false);
+        toast.error(err);
+        return null;
+      }
+
+      // Step 1: Read as base64
+      log("⏳ Четене като base64...");
+      const base64 = await readAsBase64(processedFile);
+      log(`✅ Base64 готов (${(base64.length / 1024).toFixed(0)} KB)`);
 
       // Step 2: Upload to Supabase Storage
       log("⏳ Качване в Storage...");
-
       let storagePath: string | null = null;
       let publicUrl: string | null = null;
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
         const userId = user?.id ?? "anonymous";
-        const ext = file.name.split(".").pop() || "jpg";
-        const uniqueName = `${crypto.randomUUID()}.${ext}`;
+        const ext = processedFile.name?.split(".").pop()?.toLowerCase() || "jpg";
+        const safeExt = ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
+        const uniqueName = `${crypto.randomUUID()}.${safeExt}`;
         const filePath = `${userId}/${uniqueName}`;
+
+        log(`📂 Path: ${filePath}`);
 
         const { data: uploadData, error: uploadErr } = await supabase.storage
           .from(BUCKET)
-          .upload(filePath, file, {
-            contentType: file.type || "image/jpeg",
+          .upload(filePath, processedFile, {
+            contentType: processedFile.type || "image/jpeg",
             upsert: false,
           });
 
         if (uploadErr) {
           const errMsg = uploadErr.message || String(uploadErr);
-          if (errMsg.includes("Bucket not found")) {
-            log(`⚠️ Bucket "${BUCKET}" не съществува. Снимката е заредена локално.`);
-          } else if (errMsg.includes("security") || errMsg.includes("policy") || errMsg.includes("permission")) {
-            log(`⚠️ Storage permission denied: ${errMsg}`);
-          } else {
-            log(`⚠️ Upload грешка: ${errMsg}`);
-          }
+          log(`⚠️ Storage: ${errMsg}`);
           console.warn("[ImageUpload] Storage upload failed:", uploadErr);
-          // Don't block — base64 is still available for Edge Functions
         } else {
           storagePath = uploadData?.path ?? filePath;
-          log(`✅ Качено в Storage: ${storagePath}`);
+          log(`✅ Storage: ${storagePath}`);
 
           const { data: urlData } = supabase.storage
             .from(BUCKET)
@@ -120,32 +147,23 @@ export function useImageUpload(): UseImageUploadReturn {
 
           if (urlData?.publicUrl) {
             publicUrl = urlData.publicUrl;
-            log(`✅ Public URL: ${publicUrl}`);
-          } else {
-            log("⚠️ Не може да се генерира public URL");
+            log(`✅ URL: ${publicUrl}`);
           }
         }
       } catch (storageErr: any) {
         log(`⚠️ Storage грешка: ${storageErr.message}`);
-        console.warn("[ImageUpload] Storage error:", storageErr);
       }
 
-      const result: UploadResult = {
-        base64,
-        preview: base64,
-        storagePath,
-        publicUrl,
-      };
-
+      const result: UploadResult = { base64, preview: base64, storagePath, publicUrl };
       setLastUpload(result);
       setUploading(false);
 
       if (storagePath) {
         toast.success("Снимката е качена успешно!");
-        log("🎉 Upload завършен успешно");
+        log("🎉 Готово (Storage + Base64)");
       } else {
         toast.success("Снимката е заредена");
-        log("✅ Снимката е заредена (без Storage)");
+        log("✅ Готово (само Base64)");
       }
 
       return result;
