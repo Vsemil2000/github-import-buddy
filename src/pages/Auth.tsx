@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Sparkles } from "lucide-react";
 import { AUTH_REDIRECT_URL } from "@/config/app";
 import { isTelegramMiniApp } from "@/lib/telegram";
+import AuthVerificationNotice from "@/components/AuthVerificationNotice";
 
 interface LegacyRecoveryResponse {
   access_token?: string;
@@ -48,6 +49,8 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
 
   useEffect(() => {
     // In Telegram, user is already authenticated — redirect immediately
@@ -75,6 +78,12 @@ const Auth = () => {
       return "Потребителят не е намерен.";
     if (lower.includes("email not confirmed"))
       return "Имейлът не е потвърден. Проверете пощата си.";
+    if (lower.includes("over_email_send_rate_limit") || lower.includes("email rate limit exceeded"))
+      return "Потвърдителните имейли временно са ограничени. Изчакайте малко и опитайте отново.";
+    if (lower.includes("email address") && lower.includes("invalid"))
+      return "Моля, въведете валиден имейл адрес.";
+    if (lower.includes("user already registered"))
+      return "Вече има акаунт с този имейл.";
     if (lower.includes("too many requests") || lower.includes("rate limit"))
       return "Твърде много опити. Опитайте отново след малко.";
     if (lower.includes("fetch") || lower.includes("network") || lower.includes("failed to send"))
@@ -82,22 +91,56 @@ const Auth = () => {
     return msg;
   }
 
+  const handleResendConfirmation = async () => {
+    const targetEmail = (pendingVerificationEmail ?? email).trim();
+
+    if (!targetEmail) {
+      toast.error("Въведете имейл адрес, за да изпратим потвърждение.");
+      return;
+    }
+
+    setResendLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: targetEmail,
+        options: { emailRedirectTo: AUTH_REDIRECT_URL },
+      });
+
+      if (error) throw error;
+
+      setPendingVerificationEmail(targetEmail);
+      toast.success("Изпратихме нов потвърдителен имейл.");
+    } catch (error: any) {
+      toast.error(toBulgarianError(error.message ?? "Неуспешно повторно изпращане."));
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const normalizedEmail = email.trim();
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
         if (error) {
           const normalizedMessage = error.message?.toLowerCase?.() ?? "";
+
+          if (normalizedMessage.includes("email not confirmed")) {
+            setPendingVerificationEmail(normalizedEmail);
+          }
+
           const shouldTryLegacyRecovery =
             normalizedMessage.includes("invalid login credentials") ||
             normalizedMessage.includes("invalid credentials");
 
           if (shouldTryLegacyRecovery) {
             try {
-              await recoverLegacyAccount(email, password);
+              await recoverLegacyAccount(normalizedEmail, password);
               toast.success("Входът със старите данни е възстановен");
               return;
             } catch {
@@ -107,17 +150,41 @@ const Auth = () => {
 
           throw error;
         }
+        setPendingVerificationEmail(null);
         toast.success("Добре дошли!");
+        navigate("/dashboard", { replace: true });
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
           password,
           options: { emailRedirectTo: AUTH_REDIRECT_URL },
         });
         if (error) throw error;
+
+        setPendingVerificationEmail(normalizedEmail);
+
+        if (data.session) {
+          toast.success("Регистрацията е успешна.");
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+
         toast.success("Проверете пощата си за потвърждение на регистрацията");
       }
     } catch (error: any) {
+      const normalizedMessage = error.message?.toLowerCase?.() ?? "";
+
+      if (
+        !isLogin &&
+        normalizedEmail &&
+        (normalizedMessage.includes("user already registered") ||
+          normalizedMessage.includes("email not confirmed") ||
+          normalizedMessage.includes("over_email_send_rate_limit") ||
+          normalizedMessage.includes("email rate limit exceeded"))
+      ) {
+        setPendingVerificationEmail(normalizedEmail);
+      }
+
       toast.error(toBulgarianError(error.message ?? "Възникна грешка."));
     } finally {
       setLoading(false);
@@ -180,9 +247,17 @@ const Auth = () => {
                 />
               </div>
               <Button type="submit" className="w-full rounded-full h-11 shadow-luxury" disabled={loading}>
-                {loading ? "Зареждане..." : isLogin ? "Вход" : "Регистрация"}
+                {loading ? (isLogin ? "Влизане..." : "Регистрация...") : isLogin ? "Вход" : "Регистрация"}
               </Button>
             </form>
+
+            {pendingVerificationEmail && (
+              <AuthVerificationNotice
+                email={pendingVerificationEmail}
+                loading={resendLoading}
+                onResend={() => void handleResendConfirmation()}
+              />
+            )}
 
             <p className="text-center text-xs text-muted-foreground">
               {isLogin ? "Нямате акаунт?" : "Вече имате акаунт?"}{" "}
