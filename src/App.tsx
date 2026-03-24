@@ -121,23 +121,32 @@ const TelegramAuthGate = () => {
     );
   }
 
-  if (attemptedTelegramAuth && error) {
+  if (!attemptedTelegramAuth || (attemptedTelegramAuth && error)) {
     return (
       <>
         <div className="min-h-screen bg-background flex items-center justify-center px-5">
           <div className="hero-luxury rounded-2xl p-8 w-full max-w-md text-center space-y-5 slide-up">
+            <div className="icon-circle w-14 h-14 mx-auto">
+              <Send className="w-6 h-6 text-primary" />
+            </div>
             <div className="space-y-2">
-              <h1 className="text-display-sm font-bold">Telegram входът не завърши</h1>
-              <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
+              <h1 className="text-display-sm font-bold" style={{ fontFamily: "'Playfair Display', Georgia, serif" }}>
+                AI стилист
+              </h1>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Моля, отворете приложението през Telegram бота.
+              </p>
             </div>
             <Button
-              type="button"
-              className="w-full rounded-full"
-              onClick={() => void runTelegramAuth(true)}
-              disabled={retrying}
+              className="w-full rounded-full h-11 gap-2"
+              onClick={() => window.open(TELEGRAM_BOT_URL, "_blank")}
             >
-              {retrying ? "Опитваме отново..." : "Опитайте отново"}
+              <Send className="w-4 h-4" />
+              Отвори в Telegram
             </Button>
+            {attemptedTelegramAuth && error && (
+              <p className="text-xs text-muted-foreground">{error}</p>
+            )}
           </div>
         </div>
         <TelegramDebugPanel debug={debugState} isChecking={false} />
