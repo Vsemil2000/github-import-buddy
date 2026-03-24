@@ -128,55 +128,55 @@ async function ensureProfile(
 
   if (profileLookupError) throw profileLookupError;
 
-  logStep("profile_lookup_by_user", {
-    userId,
-    profileExists: Boolean(existingProfile),
-    grantStartingTokens,
-  });
+  logStep("profile_lookup_by_user", { userId, profileExists: Boolean(existingProfile) });
 
   if (!existingProfile) {
     const { error: insertProfileError } = await supabase.from("profiles").insert({
       user_id: userId,
       telegram_id: telegramUser.telegram_id,
       email: displayLabel || null,
-      token_balance: grantStartingTokens ? 5 : 0,
-      free_generation_used: false,
     });
-
     if (insertProfileError) throw insertProfileError;
-    logStep("profile_created", {
-      userId,
-      telegramId: telegramUser.telegram_id,
-      grantedStartingTokens: grantStartingTokens,
-      walletCreated: false,
-      usageLimitsCreated: false,
-      walletStrategy: "profiles.token_balance",
-      usageLimitsStrategy: "profiles.free_generation_used",
-    });
-    return { existed: false, created: true, grantedStartingTokens: grantStartingTokens };
+    logStep("profile_created", { userId, telegramId: telegramUser.telegram_id });
+  } else {
+    const { error: updateProfileError } = await supabase
+      .from("profiles")
+      .update({ telegram_id: telegramUser.telegram_id, email: displayLabel || null })
+      .eq("user_id", userId);
+    if (updateProfileError) throw updateProfileError;
+    logStep("profile_updated", { userId, telegramId: telegramUser.telegram_id });
   }
 
-  const { error: updateProfileError } = await supabase
-    .from("profiles")
-    .update({
-      telegram_id: telegramUser.telegram_id,
-      email: displayLabel || null,
-    })
-    .eq("user_id", userId);
+  // Ensure token_wallets entry exists (single source of truth for balance)
+  let grantedTokens = false;
+  const { data: wallet, error: walletErr } = await supabase
+    .from("token_wallets")
+    .select("balance, lifetime_credited")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  if (updateProfileError) throw updateProfileError;
+  if (walletErr) throw walletErr;
 
-  logStep("profile_updated", {
-    userId,
-    telegramId: telegramUser.telegram_id,
-    grantedStartingTokens: false,
-    walletCreated: false,
-    usageLimitsCreated: false,
-    walletStrategy: "profiles.token_balance",
-    usageLimitsStrategy: "profiles.free_generation_used",
-  });
+  if (!wallet && grantStartingTokens) {
+    const { error: insertWalletErr } = await supabase.from("token_wallets").insert({
+      user_id: userId, balance: 5, lifetime_credited: 5, lifetime_spent: 0,
+    });
+    if (insertWalletErr) throw insertWalletErr;
+    grantedTokens = true;
+    logStep("wallet_created_with_bonus", { userId });
+  } else if (!wallet) {
+    const { error: insertWalletErr } = await supabase.from("token_wallets").insert({
+      user_id: userId, balance: 0, lifetime_credited: 0, lifetime_spent: 0,
+    });
+    if (insertWalletErr) throw insertWalletErr;
+    logStep("wallet_created_empty", { userId });
+  }
 
-  return { existed: true, created: false, grantedStartingTokens: false };
+  return {
+    existed: Boolean(existingProfile),
+    created: !existingProfile,
+    grantedStartingTokens: grantedTokens,
+  };
 }
 
 async function ensureStyleProfile(
