@@ -48,23 +48,17 @@ const HairstyleSection = ({
   const activePreview = useSharedPhoto ? sharedPhotoPreview : photoPreview;
   const activeBase64 = useSharedPhoto ? sharedPhotoBase64 : photoBase64;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Файлът е твърде голям (макс. 10 МБ)");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setPhotoPreview(result);
-      setPhotoBase64(result);
+    const result = await handleFileUpload(file);
+    if (result) {
+      setPhotoPreview(result.preview);
+      setPhotoBase64(result.base64);
       setUseSharedPhoto(false);
       setHairstyles(null);
       setCardStates([]);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleUseSharedPhoto = () => {
