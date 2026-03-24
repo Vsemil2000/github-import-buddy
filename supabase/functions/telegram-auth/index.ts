@@ -388,13 +388,8 @@ Deno.serve(async (req) => {
     logStep("bootstrap_complete", {
       telegramId,
       userId,
-      profileExists: profileResult.existed,
       profileCreated: profileResult.created,
       styleProfileCreated: styleProfileResult.created,
-      walletCreated: false,
-      usageLimitsCreated: false,
-      walletStrategy: "profiles.token_balance",
-      usageLimitsStrategy: "profiles.free_generation_used",
       grantedStartingTokens: profileResult.grantedStartingTokens,
     });
 
