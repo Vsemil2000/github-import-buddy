@@ -113,6 +113,7 @@ const HairstyleSection = ({
 
     const hs = hairstyles[index];
     setCardStates(prev => prev.map((s, i) => i === index ? { ...s, imageLoading: true } : s));
+    console.log("[generate-hairstyle] Starting request for:", hs.name);
     try {
       const { data, error } = await supabase.functions.invoke("generate-hairstyle", {
         body: {
@@ -122,13 +123,27 @@ const HairstyleSection = ({
           gender,
         },
       });
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      console.log("[generate-hairstyle] Response data:", JSON.stringify(data)?.slice(0, 500));
+      console.log("[generate-hairstyle] Response error:", error);
+      if (error) {
+        // Try to extract the real error message from FunctionsHttpError
+        let msg = error.message || "Edge Function error";
+        try {
+          if (error.context) {
+            const body = await error.context.json();
+            console.log("[generate-hairstyle] Error body:", JSON.stringify(body));
+            msg = body?.error || body?.message || msg;
+          }
+        } catch { /* context not readable */ }
+        throw new Error(msg);
+      }
+      if (data?.error) throw new Error(data.error);
       setCardStates(prev =>
         prev.map((s, i) => i === index ? { ...s, imageUrl: data.imageUrl, imageLoading: false } : s)
       );
       toast.success("Прическата е генерирана!");
     } catch (e: any) {
+      console.error("[generate-hairstyle] Full error:", e);
       toast.error(e.message || "Грешка при генериране на прическа");
       setCardStates(prev => prev.map((s, i) => i === index ? { ...s, imageLoading: false } : s));
     }
