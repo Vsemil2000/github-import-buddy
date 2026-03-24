@@ -11,19 +11,24 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) throw new Error("Not authenticated");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "No auth header" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
+    // Decode JWT to get user ID
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) throw new Error("Not authenticated");
-
-    const userId = claimsData.claims.sub;
+    let userId: string;
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      userId = payload.sub;
+      if (!userId) throw new Error("No sub in token");
+    } catch (decodeErr) {
+      return new Response(JSON.stringify({ error: "Invalid token" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -36,7 +41,10 @@ serve(async (req) => {
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (walletError) throw walletError;
+    if (walletError) {
+      console.error("check-tokens: wallet error:", JSON.stringify(walletError));
+      throw walletError;
+    }
 
     const balance = wallet?.balance ?? 0;
 
@@ -48,7 +56,8 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("check-tokens error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
+    const msg = e instanceof Error ? e.message : JSON.stringify(e);
+    return new Response(JSON.stringify({ error: msg }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
