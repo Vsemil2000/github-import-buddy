@@ -47,10 +47,10 @@ const HairstyleSection = ({
   const activePreview = useSharedPhoto ? sharedPhotoPreview : photoPreview;
   const activeBase64 = useSharedPhoto ? sharedPhotoBase64 : photoBase64;
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement> | Event) => {
+    const input = (e.target as HTMLInputElement);
+    const file = input?.files?.[0];
     if (!file) return;
-    // Reset input so same file can be re-selected (critical for mobile Telegram)
     if (fileInputRef.current) fileInputRef.current.value = "";
     const result = await handleFileUpload(file);
     if (result) {
@@ -61,6 +61,19 @@ const HairstyleSection = ({
       setCardStates([]);
     }
   };
+
+  const triggerFileInput = () => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  };
+
+  useEffect(() => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    const handler = (e: Event) => handleFileChange(e);
+    input.addEventListener("input", handler);
+    return () => input.removeEventListener("input", handler);
+  }, []);
 
   const handleUseSharedPhoto = () => {
     setUseSharedPhoto(true);
