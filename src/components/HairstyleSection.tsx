@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Upload, Loader2, Download, Scissors, Sparkles } from "lucide-react";
 import NextStepPanel from "@/components/NextStepPanel";
+import { useImageUpload } from "@/hooks/use-image-upload";
 
 interface Hairstyle {
   name: string;
