@@ -29,17 +29,19 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: profile, error: profileError } = await serviceClient
-      .from("profiles")
-      .select("token_balance")
+    const { data: wallet, error: walletError } = await serviceClient
+      .from("token_wallets")
+      .select("balance")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
-    if (profileError) throw profileError;
+    if (walletError) throw walletError;
+
+    const balance = wallet?.balance ?? 0;
 
     return new Response(JSON.stringify({
-      tokenBalance: profile.token_balance || 0,
-      canGenerate: (profile.token_balance || 0) > 0,
+      tokenBalance: balance,
+      canGenerate: balance > 0,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
