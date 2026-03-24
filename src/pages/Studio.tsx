@@ -148,8 +148,9 @@ const Studio = () => {
   };
 
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement> | Event) => {
+    const input = (e.target as HTMLInputElement);
+    const file = input?.files?.[0];
     if (!file) return;
     // Reset input so same file can be re-selected (critical for mobile Telegram)
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -161,6 +162,21 @@ const Studio = () => {
       setCardStates([]);
     }
   };
+
+  // Programmatic click for mobile Telegram — overlay inputs often miss touch events
+  const triggerFileInput = () => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  };
+
+  // Attach native onInput as fallback (some mobile browsers fire input but not change)
+  useEffect(() => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    const handler = (e: Event) => handleFileChange(e);
+    input.addEventListener("input", handler);
+    return () => input.removeEventListener("input", handler);
+  }, []);
 
   const analyzeStyle = async () => {
     if (!photoBase64) return;
