@@ -34,17 +34,28 @@ const Dashboard = () => {
 
   const initializeAndFetch = async () => {
     try {
-      // Ensure profile exists with bonus tokens for new users
-      await supabase.functions.invoke("initialize-user");
-    } catch {}
-    fetchTokens();
+      const { error } = await supabase.functions.invoke("initialize-user");
+      if (error) {
+        console.error("initialize-user failed:", error);
+      }
+    } catch (error) {
+      console.error("initialize-user failed:", error);
+    }
+
+    await fetchTokens();
   };
 
   const fetchTokens = async () => {
     try {
-      const { data } = await supabase.functions.invoke("check-tokens");
+      const { data, error } = await supabase.functions.invoke("check-tokens");
+      if (error) {
+        console.error("check-tokens failed:", error);
+        return;
+      }
       setTokenBalance(data?.tokenBalance ?? 0);
-    } catch {}
+    } catch (error) {
+      console.error("check-tokens failed:", error);
+    }
   };
 
   const fetchRecentImages = async () => {
