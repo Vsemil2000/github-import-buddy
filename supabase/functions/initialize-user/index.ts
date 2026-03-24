@@ -38,7 +38,6 @@ serve(async (req) => {
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Check if profile already exists
     const { data: existingProfile } = await serviceClient
       .from("profiles")
       .select("id, token_balance")
@@ -46,7 +45,6 @@ serve(async (req) => {
       .maybeSingle();
 
     if (existingProfile) {
-      // Profile exists — no duplicate grant
       return new Response(JSON.stringify({
         initialized: false,
         reason: "profile_exists",
@@ -56,7 +54,6 @@ serve(async (req) => {
       });
     }
 
-    // Create profile with 5 bonus tokens
     const { error: insertError } = await serviceClient.from("profiles").insert({
       user_id: userId,
       token_balance: 5,
