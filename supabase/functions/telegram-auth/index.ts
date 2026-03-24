@@ -428,8 +428,6 @@ Deno.serve(async (req) => {
         bootstrap: {
           profileCreated: profileResult.created,
           styleProfileCreated: styleProfileResult.created,
-          walletCreated: false,
-          usageLimitsCreated: false,
           grantedStartingTokens: profileResult.grantedStartingTokens,
         },
       });
