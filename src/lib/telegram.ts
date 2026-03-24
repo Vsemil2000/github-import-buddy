@@ -170,8 +170,8 @@ export async function waitForTelegramWebApp(options?: {
   timeoutMs?: number;
   pollIntervalMs?: number;
 }): Promise<TelegramWebApp | undefined> {
-  const timeoutMs = options?.timeoutMs ?? 2500;
-  const pollIntervalMs = options?.pollIntervalMs ?? 120;
+  const timeoutMs = options?.timeoutMs ?? 5000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 100;
 
   let telegramWebApp = getTelegramWebApp();
   if (telegramWebApp) return telegramWebApp;
