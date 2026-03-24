@@ -6,6 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const WELCOME_BONUS = 5;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -23,45 +25,117 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: authHeader } },
     });
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) throw new Error("Not authenticated");
 
     const userId = user.id;
-
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
+    // Step 1: Ensure profile exists
     const { data: existingProfile } = await serviceClient
       .from("profiles")
       .select("id, token_balance")
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (existingProfile) {
+    if (!existingProfile) {
+      // Create profile (trigger may also do this, but be safe)
+      const { error: insertError } = await serviceClient.from("profiles").insert({
+        user_id: userId,
+        token_balance: 0, // will be updated after wallet bonus
+        free_generation_used: false,
+      });
+      if (insertError && !insertError.message?.includes("duplicate")) {
+        throw insertError;
+      }
+      console.log("initialize-user: created profile for", userId);
+    }
+
+    // Step 2: Ensure token_wallets exists
+    const { data: existingWallet } = await serviceClient
+      .from("token_wallets")
+      .select("id, balance, lifetime_credited")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!existingWallet) {
+      // Create wallet with welcome bonus
+      const { error: walletError } = await serviceClient.from("token_wallets").insert({
+        user_id: userId,
+        balance: WELCOME_BONUS,
+        lifetime_credited: WELCOME_BONUS,
+        lifetime_spent: 0,
+      });
+      if (walletError && !walletError.message?.includes("duplicate")) {
+        throw walletError;
+      }
+      console.log("initialize-user: created wallet with", WELCOME_BONUS, "tokens for", userId);
+    } else if (existingWallet.lifetime_credited === 0 && existingWallet.balance === 0) {
+      // Wallet exists but welcome bonus was never granted — fix it
+      const { error: updateError } = await serviceClient
+        .from("token_wallets")
+        .update({
+          balance: WELCOME_BONUS,
+          lifetime_credited: WELCOME_BONUS,
+        })
+        .eq("user_id", userId);
+      if (updateError) throw updateError;
+      console.log("initialize-user: granted missing welcome bonus to existing wallet for", userId);
+    } else {
+      // Wallet already has credited tokens — bonus was already given
+      console.log("initialize-user: wallet already initialized for", userId,
+        "balance:", existingWallet.balance, "lifetime_credited:", existingWallet.lifetime_credited);
+
+      // Sync profile.token_balance with wallet
+      await serviceClient
+        .from("profiles")
+        .update({ token_balance: existingWallet.balance })
+        .eq("user_id", userId);
+
       return new Response(JSON.stringify({
         initialized: false,
-        reason: "profile_exists",
-        tokenBalance: existingProfile.token_balance || 0,
+        reason: "already_initialized",
+        tokenBalance: existingWallet.balance,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { error: insertError } = await serviceClient.from("profiles").insert({
+    // Step 3: Record the welcome bonus transaction (only if we granted bonus above)
+    const { error: txError } = await serviceClient.from("token_transactions").insert({
       user_id: userId,
-      token_balance: 5,
-      free_generation_used: false,
+      amount: WELCOME_BONUS,
+      type: "welcome_bonus",
+      description: "Welcome bonus — 5 free tokens",
     });
+    if (txError && !txError.message?.includes("duplicate")) {
+      // Non-critical — log but don't fail
+      console.error("initialize-user: failed to insert transaction:", txError.message);
+    }
 
-    if (insertError) throw insertError;
+    // Step 4: Sync profile.token_balance with wallet
+    await serviceClient
+      .from("profiles")
+      .update({ token_balance: WELCOME_BONUS })
+      .eq("user_id", userId);
 
-    console.log("initialize-user: created profile for", userId, "with 5 tokens");
+    // Re-read final wallet state
+    const { data: finalWallet } = await serviceClient
+      .from("token_wallets")
+      .select("balance, lifetime_credited")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const finalBalance = finalWallet?.balance ?? WELCOME_BONUS;
+
+    console.log("initialize-user: completed for", userId, "final balance:", finalBalance);
 
     return new Response(JSON.stringify({
       initialized: true,
-      tokenBalance: 5,
+      tokenBalance: finalBalance,
       grantedBonus: true,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
