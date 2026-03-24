@@ -60,12 +60,22 @@ const Dashboard = () => {
 
   const fetchRecentImages = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("generated_images")
-      .select("id, image_url, image_type, style_name, created_at")
-      .order("created_at", { ascending: false })
-      .limit(6);
-    setRecentImages(data || []);
+    try {
+      const { data, error } = await supabase
+        .from("generated_images")
+        .select("id, image_url, image_type, style_name, created_at")
+        .order("created_at", { ascending: false })
+        .limit(6);
+      if (error) {
+        console.warn("fetchRecentImages: table may not exist yet", error.code);
+        setRecentImages([]);
+      } else {
+        setRecentImages(data || []);
+      }
+    } catch (e) {
+      console.warn("fetchRecentImages: failed", e);
+      setRecentImages([]);
+    }
     setLoading(false);
   };
 
