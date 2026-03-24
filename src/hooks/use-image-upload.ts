@@ -109,22 +109,21 @@ export function useImageUpload(): UseImageUploadReturn {
     log("🚀 Upload started");
 
     try {
-      // Step 0: Compress if needed
+      // Step 0: Always run through compression to normalize EXIF orientation
       let processedFile = file;
-      if (file.size > COMPRESS_ABOVE) {
-        log(`⏳ Компресиране (${(file.size / 1024 / 1024).toFixed(1)} MB)...`);
-        try {
-          processedFile = await imageCompression(file, {
-            maxSizeMB: 3,
-            maxWidthOrHeight: 2048,
-            useWebWorker: false, // more reliable in Telegram WebApp
-            fileType: "image/jpeg",
-          });
-          log(`✅ Компресирано: ${(processedFile.size / 1024).toFixed(0)} KB`);
-        } catch (compErr: any) {
-          log(`⚠️ Компресирането неуспешно, използваме оригинала: ${compErr.message}`);
-          processedFile = file;
-        }
+      log(`⏳ Нормализиране на ориентацията и компресиране...`);
+      try {
+        processedFile = await imageCompression(file, {
+          maxSizeMB: 3,
+          maxWidthOrHeight: 2048,
+          useWebWorker: false, // more reliable in Telegram WebApp
+          fileType: "image/jpeg",
+          exifOrientation: 1, // force upright orientation
+        });
+        log(`✅ Нормализирано: ${(processedFile.size / 1024).toFixed(0)} KB`);
+      } catch (compErr: any) {
+        log(`⚠️ Нормализирането неуспешно, използваме оригинала: ${compErr.message}`);
+        processedFile = file;
       }
 
       if (processedFile.size > MAX_SIZE) {
