@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Upload, Loader2, Download, LayoutGrid, Coins, ShoppingCart, Star, Shirt, Scissors } from "lucide-react";
+import { useImageUpload } from "@/hooks/use-image-upload";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,7 @@ const Studio = () => {
   const [activeTab, setActiveTab] = useState<"clothing" | "hairstyle">("clothing");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const { uploading, uploadError, handleFileUpload, debugLog } = useImageUpload();
   const [analyzing, setAnalyzing] = useState(false);
   const [styles, setStyles] = useState<Style[] | null>(null);
   const [cardStates, setCardStates] = useState<StyleCardState[]>([]);
@@ -146,22 +148,16 @@ const Studio = () => {
   };
 
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("Файлът е твърде голям (макс. 10 МБ)");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setPhotoPreview(result);
-      setPhotoBase64(result);
+    const result = await handleFileUpload(file);
+    if (result) {
+      setPhotoPreview(result.preview);
+      setPhotoBase64(result.base64);
       setStyles(null);
       setCardStates([]);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const analyzeStyle = async () => {
@@ -318,7 +314,12 @@ const Studio = () => {
           <div
             className="hero-luxury rounded-2xl p-8 text-center cursor-pointer hover:shadow-luxury-lg transition-shadow duration-300 active:scale-[0.99] block relative overflow-hidden"
           >
-            {photoPreview ? (
+            {uploading ? (
+              <div className="space-y-3 py-8">
+                <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Качване на снимката...</p>
+              </div>
+            ) : photoPreview ? (
               <img
                 src={photoPreview}
                 alt="Вашата снимка"
@@ -339,14 +340,28 @@ const Studio = () => {
               accept="image/*"
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
               onChange={handleFileChange}
+              disabled={uploading}
             />
           </div>
+
+          {uploadError && (
+            <p className="text-xs text-destructive text-center">{uploadError}</p>
+          )}
+
+          {debugLog.length > 0 && (
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">Debug log ({debugLog.length})</summary>
+              <pre className="mt-1 p-2 rounded-lg text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap" style={{ background: "hsl(var(--muted))" }}>
+                {debugLog.join("\n")}
+              </pre>
+            </details>
+          )}
 
           <Button
             size="lg"
             className="w-full rounded-full py-5 shadow-luxury"
             onClick={analyzeStyle}
-            disabled={!photoBase64 || analyzing}
+            disabled={!photoBase64 || analyzing || uploading}
           >
             {analyzing ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Анализираме...</>
