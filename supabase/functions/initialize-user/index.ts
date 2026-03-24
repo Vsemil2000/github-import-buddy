@@ -34,18 +34,16 @@ serve(async (req) => {
     const userId = user.id;
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Step 1: Ensure profile exists
+    // Step 1: Ensure profile exists (no token_balance column)
     const { data: existingProfile } = await serviceClient
       .from("profiles")
-      .select("id, token_balance")
+      .select("id")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (!existingProfile) {
-      // Create profile (trigger may also do this, but be safe)
       const { error: insertError } = await serviceClient.from("profiles").insert({
         user_id: userId,
-        token_balance: 0, // will be updated after wallet bonus
         free_generation_used: false,
       });
       if (insertError && !insertError.message?.includes("duplicate")) {
@@ -62,7 +60,6 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!existingWallet) {
-      // Create wallet with welcome bonus
       const { error: walletError } = await serviceClient.from("token_wallets").insert({
         user_id: userId,
         balance: WELCOME_BONUS,
@@ -74,7 +71,6 @@ serve(async (req) => {
       }
       console.log("initialize-user: created wallet with", WELCOME_BONUS, "tokens for", userId);
     } else if (existingWallet.lifetime_credited === 0 && existingWallet.balance === 0) {
-      // Wallet exists but welcome bonus was never granted — fix it
       const { error: updateError } = await serviceClient
         .from("token_wallets")
         .update({
@@ -85,15 +81,8 @@ serve(async (req) => {
       if (updateError) throw updateError;
       console.log("initialize-user: granted missing welcome bonus to existing wallet for", userId);
     } else {
-      // Wallet already has credited tokens — bonus was already given
       console.log("initialize-user: wallet already initialized for", userId,
         "balance:", existingWallet.balance, "lifetime_credited:", existingWallet.lifetime_credited);
-
-      // Sync profile.token_balance with wallet
-      await serviceClient
-        .from("profiles")
-        .update({ token_balance: existingWallet.balance })
-        .eq("user_id", userId);
 
       return new Response(JSON.stringify({
         initialized: false,
@@ -104,7 +93,7 @@ serve(async (req) => {
       });
     }
 
-    // Step 3: Record the welcome bonus transaction (only if we granted bonus above)
+    // Step 3: Record the welcome bonus transaction
     const { error: txError } = await serviceClient.from("token_transactions").insert({
       user_id: userId,
       amount: WELCOME_BONUS,
@@ -112,15 +101,8 @@ serve(async (req) => {
       description: "Welcome bonus — 5 free tokens",
     });
     if (txError && !txError.message?.includes("duplicate")) {
-      // Non-critical — log but don't fail
       console.error("initialize-user: failed to insert transaction:", txError.message);
     }
-
-    // Step 4: Sync profile.token_balance with wallet
-    await serviceClient
-      .from("profiles")
-      .update({ token_balance: WELCOME_BONUS })
-      .eq("user_id", userId);
 
     // Re-read final wallet state
     const { data: finalWallet } = await serviceClient

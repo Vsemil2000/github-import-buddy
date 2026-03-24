@@ -19,39 +19,43 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) throw new Error("Not authenticated");
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw new Error("Not authenticated");
 
-    const userId = claimsData.claims.sub;
+    const userId = user.id;
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: profile, error: profileError } = await serviceClient
-      .from("profiles")
-      .select("token_balance")
+    const { data: wallet, error: walletError } = await serviceClient
+      .from("token_wallets")
+      .select("balance, lifetime_spent")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
-    if (profileError) throw profileError;
+    if (walletError) throw walletError;
 
-    if ((profile.token_balance || 0) <= 0) {
+    const currentBalance = wallet?.balance ?? 0;
+
+    if (currentBalance <= 0) {
       return new Response(JSON.stringify({ error: "Недостатъчно токени", needTokens: true }), {
         status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const newBalance = currentBalance - 1;
+    const newSpent = (wallet?.lifetime_spent ?? 0) + 1;
+
     const { error } = await serviceClient
-      .from("profiles")
-      .update({ token_balance: profile.token_balance - 1 })
+      .from("token_wallets")
+      .update({ balance: newBalance, lifetime_spent: newSpent })
       .eq("user_id", userId);
 
     if (error) throw error;
 
-    return new Response(JSON.stringify({ ok: true, tokenBalance: profile.token_balance - 1 }), {
+    return new Response(JSON.stringify({ ok: true, tokenBalance: newBalance }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
