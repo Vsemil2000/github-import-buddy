@@ -102,7 +102,7 @@ const Studio = () => {
         }
         throw new Error(data.error);
       }
-      setTokenBalance(data.tokenBalance ?? 0);
+      setTokenBalance(data?.balance ?? data?.tokenBalance ?? 0);
       return true;
     } catch (e: any) {
       toast.error(e.message || "Грешка при проверка на токени");

@@ -52,7 +52,7 @@ const Dashboard = () => {
         console.error("check-tokens failed:", error);
         return;
       }
-      setTokenBalance(data?.tokenBalance ?? 0);
+      setTokenBalance(data?.balance ?? data?.tokenBalance ?? 0);
     } catch (error) {
       console.error("check-tokens failed:", error);
     }

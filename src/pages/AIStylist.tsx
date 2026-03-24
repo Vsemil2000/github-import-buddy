@@ -77,7 +77,7 @@ const AIStylist = () => {
         toast.error("Недостатъчно токени");
         return false;
       }
-      setTokenBalance(data.tokenBalance ?? 0);
+      setTokenBalance(data?.balance ?? data?.tokenBalance ?? 0);
       return true;
     } catch {
       toast.error("Грешка при проверка на токени");
