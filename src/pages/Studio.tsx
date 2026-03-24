@@ -66,7 +66,7 @@ const Studio = () => {
     try {
       const { data, error } = await supabase.functions.invoke("check-tokens");
       if (error) throw error;
-      setTokenBalance(data.tokenBalance ?? 0);
+      setTokenBalance(data?.balance ?? data?.tokenBalance ?? 0);
     } catch (e) {
       console.error("Failed to fetch tokens:", e);
     }
