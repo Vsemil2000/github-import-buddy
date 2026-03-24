@@ -330,7 +330,8 @@ const Studio = () => {
           </div>
 
           <div
-            className="hero-luxury rounded-2xl p-8 text-center cursor-pointer hover:shadow-luxury-lg transition-shadow duration-300 active:scale-[0.99] block relative overflow-hidden"
+            className="hero-luxury rounded-2xl p-8 text-center cursor-pointer hover:shadow-luxury-lg transition-shadow duration-300 active:scale-[0.99] block"
+            onClick={triggerFileInput}
           >
             {uploading ? (
               <div className="space-y-3 py-8">
@@ -351,16 +352,17 @@ const Studio = () => {
                 <p className="text-sm text-muted-foreground">Натиснете, за да качите снимка в цял ръст</p>
               </div>
             )}
-            <input
-              ref={fileInputRef}
-              id="studio-photo-upload"
-              type="file"
-              accept="image/*"
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              onChange={handleFileChange}
-              disabled={uploading}
-            />
           </div>
+          <input
+            ref={fileInputRef}
+            id="studio-photo-upload"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={handleFileChange as any}
+            disabled={uploading}
+          />
 
           {uploadError && (
             <p className="text-xs text-destructive text-center">{uploadError}</p>
