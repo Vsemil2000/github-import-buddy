@@ -22,7 +22,7 @@ const Auth = () => {
         </div>
         <Button
           className="w-full rounded-full h-11 gap-2"
-          onClick={() => window.open(TELEGRAM_BOT_URL, "_blank")}
+          onClick={() => { window.location.href = TELEGRAM_BOT_URL; }}
         >
           <Send className="w-4 h-4" />
           Отвори в Telegram

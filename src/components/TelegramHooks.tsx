@@ -9,7 +9,7 @@ interface TelegramHooksProps {
 
 const TelegramHooks = ({ variant = "inline" }: TelegramHooksProps) => {
   const handleTelegram = (action: string) => {
-    window.open(TELEGRAM_BOT_URL, "_blank");
+    window.location.href = TELEGRAM_BOT_URL;
     toast.info("Отваряме Telegram...");
   };
 
