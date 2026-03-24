@@ -67,6 +67,21 @@ const Auth = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  function toBulgarianError(msg: string): string {
+    const lower = msg.toLowerCase();
+    if (lower.includes("invalid login credentials") || lower.includes("invalid credentials"))
+      return "Грешен имейл или парола.";
+    if (lower.includes("user not found"))
+      return "Потребителят не е намерен.";
+    if (lower.includes("email not confirmed"))
+      return "Имейлът не е потвърден. Проверете пощата си.";
+    if (lower.includes("too many requests") || lower.includes("rate limit"))
+      return "Твърде много опити. Опитайте отново след малко.";
+    if (lower.includes("fetch") || lower.includes("network") || lower.includes("failed to send"))
+      return "Мрежова грешка. Проверете интернет връзката си.";
+    return msg;
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -80,13 +95,17 @@ const Auth = () => {
             normalizedMessage.includes("invalid login credentials") ||
             normalizedMessage.includes("invalid credentials");
 
-          if (!shouldTryLegacyRecovery) {
-            throw error;
+          if (shouldTryLegacyRecovery) {
+            try {
+              await recoverLegacyAccount(email, password);
+              toast.success("Входът със старите данни е възстановен");
+              return;
+            } catch {
+              // Legacy recovery failed — show the original auth error
+            }
           }
 
-          await recoverLegacyAccount(email, password);
-          toast.success("Входът със старите данни е възстановен");
-          return;
+          throw error;
         }
         toast.success("Добре дошли!");
       } else {
@@ -99,7 +118,7 @@ const Auth = () => {
         toast.success("Проверете пощата си за потвърждение на регистрацията");
       }
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(toBulgarianError(error.message ?? "Възникна грешка."));
     } finally {
       setLoading(false);
     }
