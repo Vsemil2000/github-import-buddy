@@ -66,7 +66,7 @@ const AIStylist = () => {
   const fetchTokens = async () => {
     try {
       const { data } = await supabase.functions.invoke("check-tokens");
-      setTokenBalance(data?.tokenBalance ?? 0);
+      setTokenBalance(data?.balance ?? data?.tokenBalance ?? 0);
     } catch {}
   };
 
