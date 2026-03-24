@@ -361,7 +361,7 @@ const Studio = () => {
             size="lg"
             className="w-full rounded-full py-5 shadow-luxury"
             onClick={analyzeStyle}
-            disabled={!photoBase64 || analyzing}
+            disabled={!photoBase64 || analyzing || uploading}
           >
             {analyzing ? (
               <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Анализираме...</>
