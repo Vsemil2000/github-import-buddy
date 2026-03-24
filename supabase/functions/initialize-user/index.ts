@@ -15,23 +15,19 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) throw new Error("Not authenticated");
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-      console.error("initialize-user: missing env vars");
-      throw new Error("Server configuration error");
-    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const supabase = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) throw new Error("Not authenticated");
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) throw new Error("Not authenticated");
 
-    const userId = user.id;
+    const userId = claimsData.claims.sub;
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
     // Step 1: Ensure profile exists (no token_balance column)
@@ -47,7 +43,8 @@ serve(async (req) => {
         free_generation_used: false,
       });
       if (insertError && !insertError.message?.includes("duplicate")) {
-        throw insertError;
+        console.error("initialize-user: profile insert error:", insertError);
+        // Non-critical — profile may be created by trigger
       }
       console.log("initialize-user: created profile for", userId);
     }
@@ -79,11 +76,10 @@ serve(async (req) => {
         })
         .eq("user_id", userId);
       if (updateError) throw updateError;
-      console.log("initialize-user: granted missing welcome bonus to existing wallet for", userId);
+      console.log("initialize-user: granted missing welcome bonus for", userId);
     } else {
-      console.log("initialize-user: wallet already initialized for", userId,
-        "balance:", existingWallet.balance, "lifetime_credited:", existingWallet.lifetime_credited);
-
+      console.log("initialize-user: already initialized for", userId,
+        "balance:", existingWallet.balance);
       return new Response(JSON.stringify({
         initialized: false,
         reason: "already_initialized",
@@ -93,7 +89,7 @@ serve(async (req) => {
       });
     }
 
-    // Step 3: Record the welcome bonus transaction
+    // Step 3: Record welcome bonus transaction
     const { error: txError } = await serviceClient.from("token_transactions").insert({
       user_id: userId,
       amount: WELCOME_BONUS,
@@ -101,18 +97,17 @@ serve(async (req) => {
       description: "Welcome bonus — 5 free tokens",
     });
     if (txError && !txError.message?.includes("duplicate")) {
-      console.error("initialize-user: failed to insert transaction:", txError.message);
+      console.error("initialize-user: tx insert error:", txError.message);
     }
 
     // Re-read final wallet state
     const { data: finalWallet } = await serviceClient
       .from("token_wallets")
-      .select("balance, lifetime_credited")
+      .select("balance")
       .eq("user_id", userId)
       .maybeSingle();
 
     const finalBalance = finalWallet?.balance ?? WELCOME_BONUS;
-
     console.log("initialize-user: completed for", userId, "final balance:", finalBalance);
 
     return new Response(JSON.stringify({
@@ -124,7 +119,7 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("initialize-user error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
