@@ -59,13 +59,15 @@ serve(async (req) => {
 
     if (!response.ok) {
       const t = await response.text();
-      console.error("Gemini API error:", response.status, t);
+      console.error("[generate-hairstyle] Gemini API error:", response.status, t.slice(0, 1000));
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Твърде много заявки, опитайте по-късно." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error(`Gemini API error: ${response.status}`);
+      return new Response(JSON.stringify({ error: `Gemini API error ${response.status}: ${t.slice(0, 200)}` }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
