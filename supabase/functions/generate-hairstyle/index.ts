@@ -71,9 +71,17 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+    console.log("[generate-hairstyle] Gemini response candidates:", data.candidates?.length, "finishReason:", data.candidates?.[0]?.finishReason);
     const parts = data.candidates?.[0]?.content?.parts || [];
+    console.log("[generate-hairstyle] Parts count:", parts.length, "types:", parts.map((p: any) => p.inlineData ? "image" : "text").join(","));
     const imagePart = parts.find((p: any) => p.inlineData);
-    if (!imagePart) throw new Error("No image generated");
+    if (!imagePart) {
+      const textPart = parts.find((p: any) => p.text);
+      console.error("[generate-hairstyle] No image in response. Text:", textPart?.text?.slice(0, 500));
+      return new Response(JSON.stringify({ error: "Gemini не генерира изображение. " + (textPart?.text?.slice(0, 100) || "") }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const imageBytes = Uint8Array.from(atob(imagePart.inlineData.data), c => c.charCodeAt(0));
     const fileName = `${user.id}/${crypto.randomUUID()}.png`;
