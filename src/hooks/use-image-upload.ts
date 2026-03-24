@@ -16,12 +16,17 @@ interface UploadResult {
   publicUrl: string | null;
 }
 
+type UploadStatus = "idle" | "selected" | "uploading" | "success" | "error";
+
 interface UseImageUploadReturn {
   uploading: boolean;
   uploadError: string | null;
   lastUpload: UploadResult | null;
   handleFileUpload: (file: File) => Promise<UploadResult | null>;
   debugLog: string[];
+   uploadStatus: UploadStatus;
+   statusMessage: string | null;
+   registerFileSelection: (file: File, source?: string) => void;
 }
 
 export function useImageUpload(): UseImageUploadReturn {
@@ -29,10 +34,26 @@ export function useImageUpload(): UseImageUploadReturn {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [lastUpload, setLastUpload] = useState<UploadResult | null>(null);
   const [debugLog, setDebugLog] = useState<string[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const log = (msg: string) => {
     console.log(`[ImageUpload] ${msg}`);
     setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()} — ${msg}`]);
+  };
+
+  const updateStatus = (status: UploadStatus, message: string | null) => {
+    setUploadStatus(status);
+    setStatusMessage(message);
+  };
+
+  const registerFileSelection = (file: File, source = "unknown") => {
+    log(`📲 File input event fired (${source})`);
+    log("✅ Файлът е избран");
+    log(`📄 Име: ${file.name || "(без име)"}`);
+    log(`🏷️ MIME тип: ${file.type || "(липсва)"}`);
+    log(`⚖️ Размер: ${(file.size / 1024).toFixed(0)} KB`);
+    updateStatus("selected", `Файлът е избран: ${file.name || "снимка"}`);
   };
 
   const readAsBase64 = (file: File): Promise<string> =>
@@ -46,14 +67,19 @@ export function useImageUpload(): UseImageUploadReturn {
   const handleFileUpload = async (file: File): Promise<UploadResult | null> => {
     setUploadError(null);
     setDebugLog([]);
+    setLastUpload(null);
+    updateStatus("idle", null);
 
     if (!file) {
       const err = "Няма избран файл";
       log(`❌ ${err}`);
       setUploadError(err);
+      updateStatus("error", "Грешка при качване");
       toast.error(err);
       return null;
     }
+
+    registerFileSelection(file, "handleFileUpload");
 
     const mimeType = file.type || "";
     log(`📄 Файл: ${file.name} | ${(file.size / 1024).toFixed(0)} KB | type="${mimeType}"`);
@@ -63,6 +89,7 @@ export function useImageUpload(): UseImageUploadReturn {
       const err = "Моля, изберете JPG или PNG снимка. HEIC форматът не се поддържа.";
       log(`❌ ${err}`);
       setUploadError(err);
+      updateStatus("error", "Грешка при качване");
       toast.error(err);
       return null;
     }
@@ -72,11 +99,14 @@ export function useImageUpload(): UseImageUploadReturn {
       const err = `Неподдържан формат: ${mimeType}. Моля, изберете JPG или PNG снимка.`;
       log(`❌ ${err}`);
       setUploadError(err);
+      updateStatus("error", "Грешка при качване");
       toast.error(err);
       return null;
     }
 
     setUploading(true);
+    updateStatus("uploading", "Качване...");
+    log("🚀 Upload started");
 
     try {
       // Step 0: Compress if needed
@@ -102,6 +132,7 @@ export function useImageUpload(): UseImageUploadReturn {
         log(`❌ ${err}`);
         setUploadError(err);
         setUploading(false);
+        updateStatus("error", "Грешка при качване");
         toast.error(err);
         return null;
       }
@@ -137,6 +168,8 @@ export function useImageUpload(): UseImageUploadReturn {
           const errMsg = uploadErr.message || String(uploadErr);
           log(`⚠️ Storage: ${errMsg}`);
           console.warn("[ImageUpload] Storage upload failed:", uploadErr);
+          setUploadError(errMsg);
+          updateStatus("error", "Грешка при качване");
         } else {
           storagePath = uploadData?.path ?? filePath;
           log(`✅ Storage: ${storagePath}`);
@@ -160,10 +193,14 @@ export function useImageUpload(): UseImageUploadReturn {
 
       if (storagePath) {
         toast.success("Снимката е качена успешно!");
+        updateStatus("success", "Снимката е качена");
         log("🎉 Готово (Storage + Base64)");
+        log("✅ Upload success");
       } else {
         toast.success("Снимката е заредена");
+        updateStatus("success", "Снимката е качена");
         log("✅ Готово (само Base64)");
+        log("✅ Upload success (base64 fallback)");
       }
 
       return result;
@@ -172,10 +209,11 @@ export function useImageUpload(): UseImageUploadReturn {
       log(`❌ ${errMsg}`);
       setUploadError(errMsg);
       setUploading(false);
+      updateStatus("error", "Грешка при качване");
       toast.error(errMsg);
       return null;
     }
   };
 
-  return { uploading, uploadError, lastUpload, handleFileUpload, debugLog };
+  return { uploading, uploadError, lastUpload, handleFileUpload, debugLog, uploadStatus, statusMessage, registerFileSelection };
 }
