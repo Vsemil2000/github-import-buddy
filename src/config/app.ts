@@ -16,7 +16,7 @@ export const APP_BASE_URL: string =
 
 /** Telegram bot deep-link URL. */
 export const TELEGRAM_BOT_URL: string =
-  import.meta.env.VITE_TELEGRAM_BOT_URL ?? "https://t.me/DressBookAIBot";
+  import.meta.env.VITE_TELEGRAM_BOT_URL ?? "https://t.me/aistillist_bot";
 
 /** Auth email-redirect URL (where the confirmation link lands). */
 export const AUTH_REDIRECT_URL: string =
