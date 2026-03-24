@@ -26,11 +26,19 @@ const Dashboard = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) navigate("/auth");
       else {
-        fetchTokens();
+        initializeAndFetch();
         fetchRecentImages();
       }
     });
   }, [navigate]);
+
+  const initializeAndFetch = async () => {
+    try {
+      // Ensure profile exists with bonus tokens for new users
+      await supabase.functions.invoke("initialize-user");
+    } catch {}
+    fetchTokens();
+  };
 
   const fetchTokens = async () => {
     try {
