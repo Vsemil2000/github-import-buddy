@@ -50,6 +50,8 @@ const HairstyleSection = ({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Reset input so same file can be re-selected (critical for mobile Telegram)
+    if (fileInputRef.current) fileInputRef.current.value = "";
     const result = await handleFileUpload(file);
     if (result) {
       setPhotoPreview(result.preview);
