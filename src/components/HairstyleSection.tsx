@@ -157,7 +157,12 @@ const HairstyleSection = ({
         <div
           className="premium-card-featured p-8 text-center cursor-pointer hover:shadow-premium-lg transition-shadow duration-300 active:scale-[0.99] block relative overflow-hidden"
         >
-          {activePreview ? (
+          {uploading ? (
+            <div className="space-y-3 py-8">
+              <Loader2 className="w-8 h-8 mx-auto animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Качване на снимката...</p>
+            </div>
+          ) : activePreview ? (
             <img
               src={activePreview}
               alt="Вашата снимка"
@@ -178,8 +183,22 @@ const HairstyleSection = ({
             accept="image/*"
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
             onChange={handleFileChange}
+            disabled={uploading}
           />
         </div>
+
+        {uploadError && (
+          <p className="text-xs text-destructive text-center">{uploadError}</p>
+        )}
+
+        {debugLog.length > 0 && (
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Debug log ({debugLog.length})</summary>
+            <pre className="mt-1 p-2 rounded-lg text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap" style={{ background: "hsl(var(--muted))" }}>
+              {debugLog.join("\n")}
+            </pre>
+          </details>
+        )}
 
         {useSharedPhoto && (
           <p className="text-xs text-muted-foreground text-center">
