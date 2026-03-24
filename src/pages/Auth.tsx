@@ -9,6 +9,39 @@ import { Sparkles } from "lucide-react";
 import { AUTH_REDIRECT_URL } from "@/config/app";
 import { isTelegramMiniApp } from "@/lib/telegram";
 
+interface LegacyRecoveryResponse {
+  access_token?: string;
+  refresh_token?: string;
+  recovered?: boolean;
+  error?: string;
+}
+
+async function recoverLegacyAccount(email: string, password: string) {
+  const { data, error } = await supabase.functions.invoke<LegacyRecoveryResponse>(
+    "recover-legacy-login",
+    {
+      body: { email, password },
+    }
+  );
+
+  if (error) {
+    throw new Error(error.message || "Неуспешно възстановяване на стар профил");
+  }
+
+  if (!data?.recovered || !data.access_token || !data.refresh_token) {
+    throw new Error(data?.error || "Старият профил не беше намерен");
+  }
+
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+  });
+
+  if (sessionError) {
+    throw new Error(sessionError.message || "Неуспешно създаване на сесия");
+  }
+}
+
 const Auth = () => {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
@@ -41,7 +74,20 @@ const Auth = () => {
     try {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        if (error) {
+          const normalizedMessage = error.message?.toLowerCase?.() ?? "";
+          const shouldTryLegacyRecovery =
+            normalizedMessage.includes("invalid login credentials") ||
+            normalizedMessage.includes("invalid credentials");
+
+          if (!shouldTryLegacyRecovery) {
+            throw error;
+          }
+
+          await recoverLegacyAccount(email, password);
+          toast.success("Входът със старите данни е възстановен");
+          return;
+        }
         toast.success("Добре дошли!");
       } else {
         const { error } = await supabase.auth.signUp({
