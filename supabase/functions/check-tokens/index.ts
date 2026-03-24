@@ -13,32 +13,46 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "No auth header" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Use official Supabase auth to get user
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      console.error("check-tokens: missing env vars", {
+        hasSupabaseUrl: Boolean(supabaseUrl),
+        hasAnonKey: Boolean(anonKey),
+        hasServiceRoleKey: Boolean(serviceRoleKey),
+      });
+
+      return new Response(JSON.stringify({ error: "Server configuration error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      console.error("check-tokens: auth error:", authError?.message ?? "no user");
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      console.error("check-tokens: auth error", authError?.message ?? "no user");
+      return new Response(JSON.stringify({ error: authError?.message ?? "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Use service client to read wallet (bypasses RLS)
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
+    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: wallet, error: walletError } = await serviceClient
       .from("token_wallets")
       .select("balance")
@@ -46,11 +60,15 @@ serve(async (req) => {
       .maybeSingle();
 
     if (walletError) {
-      console.error("check-tokens: wallet error:", JSON.stringify(walletError));
-      throw walletError;
+      console.error("check-tokens: wallet query error", walletError);
+      return new Response(JSON.stringify({ error: walletError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const balance = wallet?.balance ?? 0;
+    console.log("check-tokens: success", { userId: user.id, balance, walletFound: Boolean(wallet) });
 
     return new Response(JSON.stringify({
       success: true,
@@ -60,11 +78,17 @@ serve(async (req) => {
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
-    console.error("check-tokens error:", e instanceof Error ? e.message : e);
-    const msg = e instanceof Error ? e.message : JSON.stringify(e);
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  } catch (error) {
+    console.error("check-tokens: unexpected runtime error", error);
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : JSON.stringify(error ?? { error: "Unknown runtime error" });
+
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
