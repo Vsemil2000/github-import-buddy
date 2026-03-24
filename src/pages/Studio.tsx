@@ -43,6 +43,7 @@ const Studio = () => {
   const [activeTab, setActiveTab] = useState<"clothing" | "hairstyle">("clothing");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const { uploading, uploadError, handleFileUpload, debugLog } = useImageUpload();
   const [analyzing, setAnalyzing] = useState(false);
   const [styles, setStyles] = useState<Style[] | null>(null);
   const [cardStates, setCardStates] = useState<StyleCardState[]>([]);
