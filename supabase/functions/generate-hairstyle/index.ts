@@ -35,8 +35,11 @@ serve(async (req) => {
     const genderText = gender === "male" ? "мъж" : "жена";
     const { mimeType, base64 } = parseDataUrl(imageBase64);
 
+    console.log("[generate-hairstyle] Request received, user:", user.id, "hairstyle:", hairstyleName);
+    console.log("[generate-hairstyle] Image base64 length:", base64.length, "mimeType:", mimeType);
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,19 +59,29 @@ serve(async (req) => {
 
     if (!response.ok) {
       const t = await response.text();
-      console.error("Gemini API error:", response.status, t);
+      console.error("[generate-hairstyle] Gemini API error:", response.status, t.slice(0, 1000));
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Твърде много заявки, опитайте по-късно." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error(`Gemini API error: ${response.status}`);
+      return new Response(JSON.stringify({ error: `Gemini API error ${response.status}: ${t.slice(0, 200)}` }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
+    console.log("[generate-hairstyle] Gemini response candidates:", data.candidates?.length, "finishReason:", data.candidates?.[0]?.finishReason);
     const parts = data.candidates?.[0]?.content?.parts || [];
+    console.log("[generate-hairstyle] Parts count:", parts.length, "types:", parts.map((p: any) => p.inlineData ? "image" : "text").join(","));
     const imagePart = parts.find((p: any) => p.inlineData);
-    if (!imagePart) throw new Error("No image generated");
+    if (!imagePart) {
+      const textPart = parts.find((p: any) => p.text);
+      console.error("[generate-hairstyle] No image in response. Text:", textPart?.text?.slice(0, 500));
+      return new Response(JSON.stringify({ error: "Gemini не генерира изображение. " + (textPart?.text?.slice(0, 100) || "") }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const imageBytes = Uint8Array.from(atob(imagePart.inlineData.data), c => c.charCodeAt(0));
     const fileName = `${user.id}/${crypto.randomUUID()}.png`;
